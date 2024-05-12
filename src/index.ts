@@ -24,68 +24,91 @@ receiver.router.get("/", async (_, res) => {
   res.send("OK");
 });
 
-app.command("/bounce", async ({ command, ack, respond }) => {
-  await ack();
+const isDev = process.env.NODE_ENV === "development";
 
-  logger.info(JSON.stringify(command, null, 2));
+const commandName = (command: string) => {
+  return isDev ? `/${command}-dev` : `/${command}`;
+};
 
-  const text = command.text;
+app.command(commandName("bounce"), async ({ command, ack, respond }) => {
+  try {
+    await ack();
 
-  if (!text) {
-    await respond("Please provide a valid text to bounce.");
-    return;
+    const { text } = command;
+
+    if (!text) {
+      await respond("Please provide a valid text to bounce.");
+      return;
+    }
+
+    const letters = generateBounceLetters(text);
+
+    await respond(letters);
+
+    // await respond({
+    //   response_type: "ephemeral",
+    //   delete_original: true,
+    //   text: `Preview: *${letters}*\n Do you want to send it?`,
+    //   blocks: [
+    //     {
+    //       type: "section",
+    //       text: {
+    //         type: "mrkdwn",
+    //         text: `Preview: *${letters}*\n Do you want to send it?`,
+    //       },
+    //     },
+    //     {
+    //       type: "actions",
+    //       elements: [
+    //         {
+    //           type: "button",
+    //           text: {
+    //             type: "plain_text",
+    //             text: "Yes",
+    //           },
+    //           action_id: "confirmation_yes",
+    //           value: JSON.stringify({
+    //             letters,
+    //           }),
+    //         },
+    //         {
+    //           type: "button",
+    //           text: {
+    //             type: "plain_text",
+    //             text: "No",
+    //           },
+    //           action_id: "confirmation_no",
+    //         },
+    //       ],
+    //     },
+    //   ],
+    // });
+  } catch (error) {
+    logger.error(error);
   }
-
-  const letters = generateBounceLetters(text);
-
-  await respond({
-    text: `Preview: *${letters}*\n Do you want to send it?`,
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `Preview: *${letters}*\n Do you want to send it?`,
-        },
-      },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Yes",
-            },
-            action_id: "confirmation_yes",
-            value: letters,
-          },
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "No",
-            },
-            action_id: "confirmation_no",
-          },
-        ],
-      },
-    ],
-  });
 });
 
 // Subscribe to button click events
-app.action("confirmation_yes", async ({ ack, action, body, client }) => {
-  await ack();
+app.action("confirmation_yes", async ({ ack, action, body, say }) => {
   try {
-    logger.info(JSON.stringify(body, null, 2));
+    await ack();
 
+    logger.info(
+      JSON.stringify(
+        {
+          action,
+          body,
+        },
+        null,
+        2
+      )
+    );
+
+    // Extract letters and channelId from the action value
     // @ts-ignore
-    const letters = action.value;
+    const { letters, channelId } = JSON.parse(action.value);
 
-    await client.chat.postMessage({
-      // @ts-ignore
-      channel: body.channel.id,
+    await say({
       text: letters,
     });
   } catch (error) {
@@ -93,10 +116,33 @@ app.action("confirmation_yes", async ({ ack, action, body, client }) => {
   }
 });
 
-app.action("confirmation_no", async ({ ack }) => {
-  await ack();
+app.action("confirmation_no", async ({ ack, action, body, client }) => {
+  try {
+    await ack();
 
-  logger.info("User cancelled the action.");
+    logger.info(
+      JSON.stringify(
+        {
+          action,
+          body,
+        },
+        null,
+        2
+      )
+    );
+
+    // Delete the ephemeral message
+    // @ts-ignore
+    const { channel_id, message_ts } = body.container;
+
+    await client.chat.delete({
+      token: process.env.SLACK_BOT_TOKEN,
+      channel: channel_id,
+      ts: message_ts,
+    });
+  } catch (error) {
+    logger.error(error);
+  }
 });
 
 (async () => {
