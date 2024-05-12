@@ -4,6 +4,7 @@ dotenv.config();
 
 import checkEnvVariables from "./config/env";
 import logger from "./config/logger";
+import generateBounceLetters from "./utils/generateBounceLetters";
 
 checkEnvVariables();
 
@@ -12,9 +13,21 @@ const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
 });
 
-app.command("/hello", async ({ command, ack, say }) => {
+app.command("/bounce", async ({ command, ack, say, payload }) => {
   await ack();
-  await say(`Hello, <@${command.user_id}>`);
+
+  logger.info(JSON.stringify(command));
+
+  const text = payload.text;
+
+  if (!text) {
+    await say("Please provide a valid text to bounce.");
+    return;
+  }
+
+  const letters = generateBounceLetters(text);
+
+  await say(letters);
 });
 
 (async () => {
