@@ -1,43 +1,47 @@
-import { App, ExpressReceiver } from "@slack/bolt";
-import dotenv from "dotenv";
+import { App, ExpressReceiver } from '@slack/bolt';
+import { FileInstallationStore } from '@slack/oauth';
+import dotenv from 'dotenv';
 dotenv.config();
 
-import checkEnvVariables from "./config/env";
-import logger from "./config/logger";
-import generateBounceLetters from "./utils/generateBounceLetters";
+import checkEnvVariables from './config/env';
+import logger from './config/logger';
+import generateBounceLetters from './utils/generateBounceLetters';
 
 checkEnvVariables();
 
 const receiver = new ExpressReceiver({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
-  endpoints: "/slack/events",
+  endpoints: '/slack/events',
 });
 
 const app = new App({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
   token: process.env.SLACK_BOT_TOKEN,
   receiver,
+  stateSecret: process.env.API_KEY,
+  scopes: ['emoji:read', 'chat:write', 'commands'],
+  installationStore: new FileInstallationStore(),
 });
 
 // health check
-receiver.router.get("/", async (_, res) => {
-  res.send("OK");
+receiver.router.get('/', async (_, res) => {
+  res.status(200).send({ status: process.env.APP_ID + ' is up and running!' });
 });
 
-const isDev = process.env.NODE_ENV === "development";
+const isDev = process.env.NODE_ENV === 'development';
 
 const commandName = (command: string) => {
   return isDev ? `/${command}-dev` : `/${command}`;
 };
 
-app.command(commandName("bounce"), async ({ command, ack, respond }) => {
+app.command(commandName('bounce'), async ({ command, ack, respond }) => {
   try {
     await ack();
 
     const { text } = command;
 
     if (!text) {
-      await respond("Please provide a valid text to bounce.");
+      await respond('Please provide a valid text to bounce.');
       return;
     }
 
@@ -89,7 +93,7 @@ app.command(commandName("bounce"), async ({ command, ack, respond }) => {
 });
 
 // Subscribe to button click events
-app.action("confirmation_yes", async ({ ack, action, body, say }) => {
+app.action('confirmation_yes', async ({ ack, action, body, say }) => {
   try {
     await ack();
 
@@ -116,7 +120,7 @@ app.action("confirmation_yes", async ({ ack, action, body, say }) => {
   }
 });
 
-app.action("confirmation_no", async ({ ack, action, body, client }) => {
+app.action('confirmation_no', async ({ ack, action, body, client }) => {
   try {
     await ack();
 
@@ -147,5 +151,5 @@ app.action("confirmation_no", async ({ ack, action, body, client }) => {
 
 (async () => {
   await app.start(process.env.PORT || 4002);
-  logger.info("Bolt app is running!");
+  logger.info('Bolt app is running!');
 })();
